@@ -77,7 +77,6 @@ export class CodeiumRegistration {
                 defaultViewport: null,
                 args: [
                     '--start-maximized',
-                    '--incognito',  // 添加隐身模式参数
                     '--no-sandbox',
                     '--disable-setuid-sandbox'
                 ]
@@ -145,9 +144,12 @@ export class CodeiumRegistration {
             throw new Error('浏览器未初始化');
         }
 
-        let page: puppeteer.Page | null = null;
+        // 为每次注册创建新的隐身上下文
+        const context = await this.browser.createIncognitoBrowserContext();
+        const page = await context.newPage();
+
         try {
-            page = await this.browser.newPage();
+            // 设置导航超时
             await page.setDefaultNavigationTimeout(30000);
             await page.setDefaultTimeout(30000);
 
@@ -241,7 +243,6 @@ export class CodeiumRegistration {
 
             logger.info(`账户 ${email} 注册成功`);
             return true;
-
         } catch (error: any) {
             const errorMessage = error.message || '未知错误';
             logger.error(`注册账户 ${email} 失败: ${errorMessage}`);
@@ -270,13 +271,14 @@ export class CodeiumRegistration {
                     logger.error('保存错误截图失败:', screenshotError.message);
                 }
             }
-            throw error; // 重新抛出错误，让调用者处理
+            return false;
         } finally {
-            // 关闭页面
+            // 关闭页面和隐身上下文
             try {
-                await page?.close();
+                await page.close();
+                await context.close();  // 关闭隐身上下文
             } catch (error: any) {
-                logger.error('关闭页面失败:', error.message);
+                logger.error('关闭页面或上下文失败:', error.message);
             }
         }
     }
