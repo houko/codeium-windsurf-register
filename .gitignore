@@ -1,0 +1,4 @@
+node_modules
+*.log
+# 错误截图
+screenshots/*.png

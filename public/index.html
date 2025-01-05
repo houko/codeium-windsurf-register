@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Codeium 账号注册工具</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100">
+    <div id="app" class="container mx-auto px-4 py-8">
+        <div class="max-w-md mx-auto bg-white rounded-lg shadow-md p-6">
+            <h1 class="text-2xl font-bold mb-6 text-center text-gray-800">Codeium 账号注册工具</h1>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">无限邮箱地址</label>
+                    <input type="text" v-model="emailPrefix" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="例如：windsurf1v">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">密码</label>
+                    <input type="password" v-model="password" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">起始版本号</label>
+                        <input type="number" v-model="startVersion" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500" placeholder="例如：1">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">注册数量</label>
+                        <input type="number" v-model="count" min="1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                    </div>
+                </div>
+
+                <button @click="previewEmails" class="w-full bg-indigo-600 text-white py-2 px-4 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 mb-2">
+                    预览邮箱列表
+                </button>
+
+                <button @click="startRegistration" :disabled="isRegistering" class="w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50">
+                    {{ isRegistering ? '注册中...' : '开始注册' }}
+                </button>
+            </div>
+
+            <!-- 预览对话框 -->
+            <div v-if="showPreview" class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center">
+                <div class="bg-white rounded-lg p-6 max-w-lg w-full mx-4 max-h-[80vh] overflow-y-auto">
+                    <h2 class="text-lg font-medium text-gray-900 mb-4">即将注册以下邮箱账户：</h2>
+                    <div class="space-y-2 mb-4">
+                        <div v-for="(email, index) in previewList" :key="index" class="text-sm text-gray-600">
+                            {{ index + 1 }}. {{ email }}
+                        </div>
+                    </div>
+                    <div class="flex justify-end space-x-4">
+                        <button @click="showPreview = false" class="bg-gray-200 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-300">
+                            取消
+                        </button>
+                        <button @click="confirmRegistration" class="bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700">
+                            确认注册
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 注册状态显示 -->
+            <div v-if="registrationStatus.length" class="mt-6">
+                <h2 class="text-lg font-medium text-gray-900 mb-2">注册状态</h2>
+                <div class="space-y-2">
+                    <div v-for="(status, index) in registrationStatus" :key="index" 
+                         :class="{'text-green-600': status.success, 'text-red-600': !status.success}"
+                         class="text-sm">
+                        {{ status.message }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue
+
+        createApp({
+            data() {
+                return {
+                    emailPrefix: '',
+                    password: '',
+                    count: 1,
+                    startVersion: 1,
+                    isRegistering: false,
+                    registrationStatus: [],
+                    showPreview: false,
+                    previewList: []
+                }
+            },
+            methods: {
+                generateEmailList() {
+                    const emails = [];
+                    const baseEmail = this.emailPrefix;
+                    const [localPart, domain] = baseEmail.split('@');
+                    const startVersion = parseInt(this.startVersion);
+                    const endVersion = startVersion + parseInt(this.count) - 1;
+
+                    for (let version = startVersion; version <= endVersion; version++) {
+                        emails.push(`${localPart}v${version}@${domain}`);
+                    }
+                    return emails;
+                },
+                async previewEmails() {
+                    if (!this.emailPrefix || !this.password || !this.count) {
+                        this.addStatus('请填写所有必填字段', false);
+                        return;
+                    }
+
+                    this.previewList = this.generateEmailList();
+                    this.showPreview = true;
+                },
+                async confirmRegistration() {
+                    this.showPreview = false;
+                    await this.startRegistration();
+                },
+                async startRegistration() {
+                    if (!this.emailPrefix || !this.password || !this.count) {
+                        this.addStatus('请填写所有必填字段', false);
+                        return;
+                    }
+
+                    this.isRegistering = true;
+                    this.showPreview = false;  // 关闭预览窗口
+                    
+                    try {
+                        const response = await fetch('http://localhost:30000/api/register', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                emails: this.generateEmailList(),
+                                password: this.password
+                            })
+                        });
+
+                        const data = await response.json();
+                        if (data.success) {
+                            this.addStatus('注册任务已开始', true);
+                        } else {
+                            this.addStatus(`错误: ${data.error}`, false);
+                        }
+                    } catch (error) {
+                        this.addStatus(`请求失败: ${error.message}`, false);
+                    } finally {
+                        this.isRegistering = false;
+                    }
+                },
+                addStatus(message, success) {
+                    this.registrationStatus.unshift({ message, success });
+                }
+            }
+        }).mount('#app')
+    </script>
+</body>
+</html>
