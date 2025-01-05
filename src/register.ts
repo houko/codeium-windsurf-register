@@ -62,16 +62,36 @@ export class CodeiumRegistration {
         logger.info(`Chrome 路径已配置: ${this.chromePath}`);
     }
 
-    private async initBrowser(): Promise<boolean> {
-        if (this.browser) {
-            return true;
-        }
-
+    /**
+     * 初始化浏览器
+     */
+    async initBrowser(): Promise<boolean> {
         try {
-            this.browser = await this.retryLaunchBrowser();
-            return this.browser !== null;
-        } catch (error) {
-            logger.error('浏览器初始化失败:', error);
+            if (this.browser) {
+                return true;
+            }
+
+            this.browser = await puppeteer.launch({
+                executablePath: this.chromePath,
+                headless: false,
+                defaultViewport: null,
+                args: [
+                    '--start-maximized',
+                    '--incognito',  // 添加隐身模式参数
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox'
+                ]
+            });
+
+            // 设置关闭浏览器的处理函数
+            this.browser.on('disconnected', () => {
+                this.browser = null;
+                logger.info('浏览器已断开连接');
+            });
+
+            return true;
+        } catch (error: any) {
+            logger.error('初始化浏览器失败:', error.message);
             return false;
         }
     }
@@ -168,22 +188,44 @@ export class CodeiumRegistration {
             await confirmPasswordInput.type(this.config.password, { delay: 100 });
             await page.waitForTimeout(500);
 
-            // 勾选同意条款复选框
-            const checkbox = await page.$('#termsAccepted');
+            // 等待并点击同意条款复选框
+            const checkbox = await page.$('input[type="checkbox"]');
             if (!checkbox) {
                 throw new Error('同意条款复选框未找到');
             }
             await checkbox.click();
             await page.waitForTimeout(500);
 
-            // 等待按钮变为可点击状态并点击
-            await page.waitForSelector('button.font-semibold.flex:not([disabled])', { timeout: 15000 });
-            
-            // 确保在点击前等待一下
-            await page.waitForTimeout(1000);
+            // 调试：获取所有按钮的文本
+            const buttons = await page.evaluate(() => {
+                const allButtons = Array.from(document.querySelectorAll('button'));
+                return allButtons.map((button, index) => ({
+                    index,
+                    text: button.textContent?.trim(),
+                    classes: button.className,
+                    disabled: button.disabled,
+                    hasSpan: button.querySelector('span') !== null,
+                    spanText: button.querySelector('span')?.textContent?.trim()
+                }));
+            });
+            console.log('找到的按钮:', JSON.stringify(buttons, null, 2));
 
-            // 直接点击按钮
-            await page.click('button.font-semibold.flex:not([disabled])');
+            // 在页面上下文中找到并点击正确的按钮
+            await page.evaluate(() => {
+                const buttons = Array.from(document.querySelectorAll('button'));
+                const signupButton = buttons.find(button => {
+                    const spanText = button.querySelector('span')?.textContent?.trim()?.toLowerCase();
+                    const isSignup = spanText === 'sign up';
+                    const isNotGoogle = !button.textContent?.toLowerCase().includes('google');
+                    return isSignup && isNotGoogle;
+                });
+                
+                if (signupButton) {
+                    signupButton.click();
+                    return true;
+                }
+                return false;
+            });
 
             // 等待导航完成
             await page.waitForNavigation({ 
